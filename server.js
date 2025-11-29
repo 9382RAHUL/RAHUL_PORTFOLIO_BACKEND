@@ -29,4 +29,8 @@ app.post("/contact", async (req, res) => {
     res.json({ message: "Message saved successfully!" });
 });
 
+app.get("/contact", (req, res) => {
+  res.send("Contact API working. Use POST to submit data.");
+});
+
 app.listen(5000, () => console.log("Server running on port 5000"));
