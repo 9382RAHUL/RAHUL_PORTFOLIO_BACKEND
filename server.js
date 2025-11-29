@@ -71,7 +71,7 @@ app.get("/", (req, res) => res.send("Backend is running."));
 
 // Start/initialize app after DB connection
 const start = async () => {
-  const MONGO_URI = "mongodb+srv://rahulmodak:portfolio@cluster0.kmbsxiz.mongodb.net/?appName=Cluster0";
+  const MONGO_URI = "mongodb+srv://rahulmodak:portfolio@cluster0.kmbsxiz.mongodb.net/portfoliodb?appName=Cluster0";
   if (!MONGO_URI) {
     console.error("ERROR: MONGO_URI is not set. Please set it in environment variables.");
     process.exit(1);
