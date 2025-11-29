@@ -42,68 +42,104 @@
 
 
 // require("dotenv").config()
+// server.js
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
+
+// Middleware
 app.use(express.json());
 
-// simple health route
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+// Configure CORS: allow specific origin if FRONTEND_URL is provided, otherwise allow all (for quick testing)
+const allowedOrigin = process.env.FRONTEND_URL || "*";
+app.use(
+  cors({
+    origin: allowedOrigin === "*" ? true : allowedOrigin,
+    methods: ["GET", "POST", "OPTIONS"],
+  })
+);
 
+// Simple logging helper
+const log = (...args) => console.log(new Date().toISOString(), ...args);
+
+// Basic routes that are always available
+app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get("/", (req, res) => res.send("Backend is running."));
+
+// Start/initialize app after DB connection
 const start = async () => {
   const MONGO_URI = "mongodb+srv://rahulmodak:portfolio@cluster0.kmbsxiz.mongodb.net/?appName=Cluster0";
   if (!MONGO_URI) {
-    console.error("MONGO_URI not set. Exiting.");
+    console.error("ERROR: MONGO_URI is not set. Please set it in environment variables.");
     process.exit(1);
   }
 
   try {
-    // connect with sensible timeouts
+    // Connect to MongoDB (do NOT pass useNewUrlParser/useUnifiedTopology here)
     await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 10000, // keep default, but explicit
-      socketTimeoutMS: 45000
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
     });
-    console.log("✅ Connected to MongoDB");
+    log("✅ Connected to MongoDB");
   } catch (err) {
     console.error("❌ MongoDB connection error:", err);
-    process.exit(1); // fail fast so Render restarts or you can debug
+    process.exit(1); // fail fast so the platform restarts or you can debug
   }
 
-  // Define schema & routes after successful connection
+  // Define schema & model AFTER successful connection
   const contactSchema = new mongoose.Schema({
-    name: String, email: String, subject: String, message: String, createdAt: { type: Date, default: Date.now }
+    name: { type: String, required: true, trim: true, maxlength: 100 },
+    email: { type: String, required: true, trim: true, maxlength: 200 },
+    subject: { type: String, trim: true, maxlength: 150 },
+    message: { type: String, required: true, trim: true, maxlength: 2000 },
+    createdAt: { type: Date, default: Date.now },
   });
-  const Contact = mongoose.model("Contact", contactSchema);
 
+  const Contact = mongoose.models.Contact || mongoose.model("Contact", contactSchema);
+
+  // POST /contact - save contact message
   app.post("/contact", async (req, res) => {
     try {
       const { name, email, subject, message } = req.body;
-      if (!name || !email || !message) return res.status(400).json({ error: "name, email and message required" });
+
+      // Basic server-side validation
+      if (!name || !email || !message) {
+        return res.status(400).json({ error: "name, email and message are required" });
+      }
 
       const doc = new Contact({ name, email, subject, message });
       await doc.save();
+
+      // return created response
       return res.status(201).json({ success: true, id: doc._id });
     } catch (err) {
       console.error("POST /contact error:", err);
-      return res.status(500).json({ error: "Server error" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  // optional: GET for quick browser test
-  app.get("/contact", (req, res) => res.json({ message: "Contact endpoint - use POST" }));
+  // GET /contact for quick browser testing (optional)
+  app.get("/contact", (req, res) => res.json({ message: "Contact endpoint — use POST to submit data" }));
 
+  // Start server
   const port = process.env.PORT || 4000;
-  app.listen(port, () => console.log(`Server listening on port ${port}`));
+  app.listen(port, () => log(`Server listening on port ${port}`));
 };
 
-start();
-
-// optional: catch unhandled rejections
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled Rejection:", err);
+// graceful shutdown
+process.on("SIGINT", () => {
+  log("SIGINT received - closing mongoose connection");
+  mongoose.connection.close(() => {
+    log("Mongoose connection closed. Exiting process.");
+    process.exit(0);
+  });
 });
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+start();
